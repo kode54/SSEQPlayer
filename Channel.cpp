@@ -1,7 +1,7 @@
 /*
  * SSEQ Player - Channel structures
  * By Naram Qashat (CyberBotX) [cyberbotx@cyberbotx.com]
- * Last modification on 2013-04-02
+ * Last modification on 2013-04-12
  *
  * Adapted from source code of FeOS Sound System
  * By fincs
@@ -18,7 +18,7 @@
 #include "common.h"
 
 NDSSoundRegister::NDSSoundRegister() : volumeMul(0), volumeDiv(0), panning(0), waveDuty(0), repeatMode(0), format(0), enable(false),
-	source(nullptr), timer(0), psgX(0), psgLast(0), psgLastCount(0), samplePosition(0), sampleIncrease(0), loopStart(0), length(0)
+	source(nullptr), timer(0), psgX(0), psgLast(0), psgLastCount(0), samplePosition(0), sampleIncrease(0), loopStart(0), length(0), totalLength(0)
 {
 }
 
@@ -418,6 +418,7 @@ void Channel::Update()
 			this->reg.source = this->tempReg.SOURCE;
 			this->reg.loopStart = this->tempReg.REPEAT_POINT;
 			this->reg.length = this->tempReg.LENGTH;
+			this->reg.totalLength = this->reg.loopStart + this->reg.length;
 			this->ampl = AMPL_THRESHOLD;
 			this->state = CS_ATTACK;
 			// Fall down
@@ -577,7 +578,7 @@ static const double M_PI = 3.14159265358979323846;
 #endif
 
 // Linear and Cosine interpolation code originally from DeSmuME
-// B-spline, Hermite, and Optimal come from Olli Niemitalo:
+// B-spline and Osculating come from Olli Niemitalo:
 // http://www.student.oulu.fi/~oniemita/dsp/deip.pdf
 int32_t Channel::Interpolate()
 {
@@ -585,79 +586,74 @@ int32_t Channel::Interpolate()
 	ratio -= static_cast<int32_t>(ratio);
 
 	uint32_t loc = static_cast<uint32_t>(this->reg.samplePosition);
-	const auto &data = &this->reg.source->data[loc];
+	const auto &data = &this->reg.source->dataptr[loc];
 	int32_t a = data[0], b;
-	if (loc + 1 < this->reg.loopStart + this->reg.length)
+	if (loc + 1 < this->reg.totalLength)
 		b = data[1];
 	else
-	{
-		if (loc)
-		{
-			int32_t am1 = data[-1];
-			b = 2 * a - am1;
-		}
-		else
-			b = a;
-	}
+		b = a;
 
-	if (this->ply->interpolation == INTERPOLATION_BSPLINE || this->ply->interpolation == INTERPOLATION_HERMITE || this->ply->interpolation == INTERPOLATION_OPTIMAL)
+	double c0, c1, c2, c3, c4, c5;
+	if (this->ply->interpolation > INTERPOLATION_COSINE)
 	{
 		int32_t c, z;
-		if (loc + 2 < this->reg.loopStart + this->reg.length)
+		if (loc + 2 < this->reg.totalLength)
 			c = data[2];
 		else
-		{
-			if (loc)
-			{
-				int32_t am1 = data[-1];
-				c = 3 * a - 2 * am1;
-			}
-			else
-				c = a;
-		}
+			c = b;
 		if (loc)
 			z = data[-1];
 		else
+			z = a;
+
+		if (this->ply->interpolation > INTERPOLATION_4POINTBSPLINE)
 		{
-			if (loc + 1 < this->reg.loopStart + this->reg.length)
+			int32_t d, y;
+			if (loc + 3 < this->reg.totalLength)
+				d = data[3];
+			else
+				d = c;
+			if (loc > 1)
+				y = data[-2];
+			else
+				y = z;
+
+			if (this->ply->interpolation == INTERPOLATION_6POINTBSPLINE)
 			{
-				int32_t ap1 = data[1];
-				z = 2 * a - ap1;
+				double ym2py2 = y + c, ym1py1 = z + b;
+				double y2mym2 = c - y, y1mym1 = b - z;
+				double sixthym1py1 = 1 / 6.0 * ym1py1;
+				c0 = 1 / 120.0 * ym2py2 + 13 / 60.0 * ym1py1 + 0.55 * a;
+				c1 = 1 / 24.0 * y2mym2 + 5 / 12.0 * y1mym1;
+				c2 = 1 / 12.0 * ym2py2 + sixthym1py1 - 0.5 * a;
+				c3 = 1 / 12.0 * y2mym2 - 1 / 6.0 * y1mym1;
+				c4 = 1 / 24.0 * ym2py2 - sixthym1py1 + 0.25 * a;
+				c5 = 1 / 120.0 * (d - y) + 1 / 24.0 * (z - c) + 1 / 12.0 * (b - a);
+				return static_cast<int32_t>(((((c5 * ratio + c4) * ratio + c3) * ratio + c2) * ratio + c1) * ratio + c0);
 			}
 			else
-				z = a;
-		}
-
-		double c0, c1, c2, c3;
-
-		if (this->ply->interpolation == INTERPOLATION_BSPLINE)
-		{
-			double zpb = z + b;
-			c0 = 1 / 6.0 * zpb + 2 / 3.0 * a;
-			c1 = 0.5 * (b - z);
-			c2 = 0.5 * zpb - a;
-			c3 = 0.5 * (a - b) + 1 / 6.0 * (c - z);
-			return static_cast<int32_t>(((c3 * ratio + c2) * ratio + c1) * ratio + c0);
-		}
-		if (this->ply->interpolation == INTERPOLATION_HERMITE)
-		{
-			c0 = a;
-			c1 = 0.5 * (b - z);
-			c2 = z - 2.5 * a + 2 * b - 0.5 * c;
-			c3 = 0.5 * (c - z) + 1.5 * (a - b);
-			return static_cast<int32_t>(((c3 * ratio + c2) * ratio + c1) * ratio + c0);
+			{
+				ratio -= 0.5;
+				double even1 = y + d, odd1 = y - d;
+				double even2 = z + c, odd2 = z - c;
+				double even3 = a + b, odd3 = a - b;
+				c0 = 0.01171875 * even1 - 0.09765625 * even2 + 0.5859375 * even3;
+				c1 = 0.2109375 * odd2 - 281 / 192.0 * odd3 - 13 / 384.0 * odd1;
+				c2 = 0.40625 * even2 - 17 / 48.0 * even3 - 5 / 96.0 * even1;
+				c3 = 0.1875 * odd1 - 53 / 48.0 * odd2 + 2.375 * odd3;
+				c4 = 1 / 48.0 * even1 - 0.0625 * even2 + 1 / 24.0 * even3;
+				c5 = 25 / 24.0 * odd2 - 25 / 12.0 * odd3 - 5 / 24.0 * odd1;
+				return static_cast<int32_t>(((((c5 * ratio + c4) * ratio + c3) * ratio + c2) * ratio + c1) * ratio + c0);
+			}
 		}
 		else
 		{
-			ratio -= 0.5;
-			double even1 = b + a, odd1 = b - a;
-			double even2 = c + z, odd2 = c - z;
-			c0 = even1 * 0.46835497211269561 + even2 * 0.03164502784253309;
-			c1 = odd1 * 0.56001293337091440 + odd2 * 0.14666238593949288;
-			c2 = even1 * -0.250038759826233691 + even2 * 0.25003876124297131;
-			c3 = odd1 * -0.49949850957839148 + odd2 * 0.16649935475113800;
-			double c4 = even1 * 0.00016095224137360 + even2 * -0.00016095810460478;
-			return static_cast<int32_t>((((c4 * ratio + c3) * ratio + c2) * ratio + c1) * ratio + c0);
+			double ym1py1 = z + b;
+			c0 = 1 / 6.0 * ym1py1 + 2 / 3.0 * a;
+			c1 = 0.5 * (b - z);
+			c2 = 0.5 * ym1py1 - a;
+			c3 = 0.5 * (a - b) + 1 / 6.0 * (c - z);
+			return static_cast<int32_t>(((c3 * ratio + c2) * ratio + c1) * ratio + c0);
 		}
 	}
 	else if (this->ply->interpolation == INTERPOLATION_COSINE)
@@ -677,7 +673,7 @@ int32_t Channel::GenerateSample()
 	if (this->reg.format != 3)
 	{
 		if (this->ply->interpolation == INTERPOLATION_NONE)
-			return this->reg.source->data[static_cast<uint32_t>(this->reg.samplePosition)];
+			return this->reg.source->dataptr[static_cast<uint32_t>(this->reg.samplePosition)];
 		else
 			return this->Interpolate();
 	}
@@ -717,11 +713,11 @@ int32_t Channel::GenerateSample()
 void Channel::IncrementSample()
 {
 	this->reg.samplePosition += this->reg.sampleIncrease;
-	if (this->reg.format != 3 && this->reg.samplePosition >= (this->reg.loopStart + this->reg.length))
+	if (this->reg.format != 3 && this->reg.samplePosition >= this->reg.totalLength)
 	{
 		if (this->reg.repeatMode == 1)
 		{
-			while (this->reg.samplePosition >= (this->reg.loopStart + this->reg.length))
+			while (this->reg.samplePosition >= this->reg.totalLength)
 				this->reg.samplePosition -= this->reg.length;
 		}
 		else
