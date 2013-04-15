@@ -14,7 +14,7 @@
 #ifndef SSEQPLAYER_CONSTS_H
 #define SSEQPLAYER_CONSTS_H
 
-#include "pstdint.h"
+#include <cstdint>
 
 const uint32_t ARM7_CLOCK = 33513982;
 const double SecondsPerClockCycle = 64.0 * 2728.0 / ARM7_CLOCK;

@@ -16,9 +16,9 @@
 
 #include <bitset>
 #include <tuple>
+#include <cstdint>
 #include "SWAV.h"
 #include "Track.h"
-#include "pstdint.h"
 
 /*
  * This structure is meant to be similar to what is stored in the actual

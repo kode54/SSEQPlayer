@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 #include <cstring>
-#include "pstdint.h"
+#include <cstdint>
 
 /*
  * Pseudo-file data structure
