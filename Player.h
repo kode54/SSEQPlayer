@@ -11,6 +11,8 @@
 #ifndef SSEQPLAYER_PLAYER_H
 #define SSEQPLAYER_PLAYER_H
 
+#include <memory>
+#include <bitset>
 #include "SSEQ.h"
 #include "Track.h"
 #include "Channel.h"
@@ -42,6 +44,11 @@ struct Player
 	void Run();
 	void UpdateTracks();
 	void Timer();
+
+	/* Playback helper */
+	double secondsPerSample, secondsIntoPlayback, secondsUntilNextClock;
+	std::bitset<16> mutes;
+	void GenerateSamples(std::vector<uint8_t> &buf, unsigned offset, unsigned samples);
 };
 
 #endif

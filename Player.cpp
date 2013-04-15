@@ -46,6 +46,8 @@ bool Player::Setup(const SSEQ *sseqToPlay)
 
 	this->tracks[firstTrack].startPos = this->tracks[firstTrack].pos = pData;
 
+	this->secondsPerSample = 1.0 / this->sampleRate;
+
 	this->ClearState();
 
 	return true;
@@ -57,6 +59,8 @@ void Player::ClearState()
 	this->tempoCount = 0;
 	this->tempoRate = 0x100;
 	this->masterVol = 0; // this is actually the highest level
+	this->secondsIntoPlayback = 0;
+	this->secondsUntilNextClock = SecondsPerClockCycle;
 }
 
 void Player::FreeTracks()
@@ -167,3 +171,69 @@ void Player::Timer()
 
 	this->Run();
 }
+
+template<typename T1, typename T2> static inline void clamp(T1 &valueToClamp, const T2 &minValue, const T2 &maxValue)
+{
+	if (valueToClamp < minValue)
+		valueToClamp = minValue;
+	else if (valueToClamp > maxValue)
+		valueToClamp = maxValue;
+}
+
+static inline int32_t muldiv7(int32_t val, uint8_t mul)
+{
+	return mul == 127 ? val : ((val * mul) >> 7);
+}
+
+void Player::GenerateSamples(std::vector<uint8_t> &buf, unsigned offset, unsigned samples)
+{
+	unsigned long mute = this->mutes.to_ulong();
+
+	for (unsigned smpl = 0; smpl < samples; ++smpl)
+	{
+		this->secondsIntoPlayback += this->secondsPerSample;
+
+		int32_t leftChannel = 0, rightChannel = 0;
+
+		// I need to advance the sound channels here
+		for (int i = 0; i < 16; ++i)
+		{
+			Channel &chn = this->channels[i];
+
+			if (chn.state > CS_NONE)
+			{
+				int32_t sample = chn.GenerateSample();
+				chn.IncrementSample();
+
+				if (mute & BIT(i))
+					continue;
+
+				uint8_t datashift = chn.reg.volumeDiv;
+				if (datashift == 3)
+					datashift = 4;
+				sample = muldiv7(sample, chn.reg.volumeMul) >> datashift;
+
+				leftChannel += muldiv7(sample, 127 - chn.reg.panning);
+				rightChannel += muldiv7(sample, chn.reg.panning);
+			}
+		}
+
+		leftChannel = muldiv7(leftChannel, 127 - this->masterVol);
+		rightChannel = muldiv7(rightChannel, 127 - this->masterVol);
+
+		clamp(leftChannel, -0x8000, 0x7FFF);
+		clamp(rightChannel, -0x8000, 0x7FFF);
+
+		buf[offset++] = leftChannel & 0xFF;
+		buf[offset++] = (leftChannel >> 8) & 0xFF;
+		buf[offset++] = rightChannel & 0xFF;
+		buf[offset++] = (rightChannel >> 8) & 0xFF;
+
+		if (this->secondsIntoPlayback > this->secondsUntilNextClock)
+		{
+			this->Timer();
+			this->secondsUntilNextClock += SecondsPerClockCycle;
+		}
+	}
+}
+
