@@ -701,7 +701,7 @@ void Channel::IncrementSample()
 {
 	double samplePosition = this->reg.samplePosition + this->reg.sampleIncrease;
 
-	if ( this->reg.samplePosition >= 0 )
+	if ( this->reg.format != 3 && this->reg.samplePosition >= 0 )
 	{
 		uint32_t loc = static_cast<uint32_t>(this->reg.samplePosition);
 		uint32_t newloc = static_cast<uint32_t>(samplePosition);
