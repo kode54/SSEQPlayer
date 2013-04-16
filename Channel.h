@@ -127,6 +127,14 @@ struct Channel
 	const Player *ply;
 	NDSSoundRegister reg;
 
+	/*
+	 * Interpolation history buffer, which contains the maximum number of
+	 * samples required for any given interpolation mode. Doubled to
+	 * simplify the case of wrapping.
+	 */
+	uint32_t sampleHistoryPtr;
+	int16_t sampleHistory[16];
+
 	Channel();
 
 	void UpdateVol(const Track &trk);
@@ -141,6 +149,7 @@ struct Channel
 	int32_t Interpolate();
 	int32_t GenerateSample();
 	void IncrementSample();
+	void clearHistory();
 };
 
 #endif

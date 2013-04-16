@@ -47,6 +47,13 @@ Channel::Channel() : chnId(-1), tempReg(), state(CS_NONE), trackId(-1), prio(0),
 	key(0), ampl(0), extTune(0), orgKey(0), modType(0), modSpeed(0), modDepth(0), modRange(0), modDelay(0), modDelayCnt(0), modCounter(0),
 	sweepLen(0), sweepCnt(0), sweepPitch(0), attackLvl(0), sustainLvl(0x7F), decayRate(0), releaseRate(0xFFFF), noteLength(-1), vol(0), ply(nullptr), reg()
 {
+	clearHistory();
+}
+
+void Channel::clearHistory()
+{
+	sampleHistoryPtr = 0;
+	memset( &sampleHistory, 0, sizeof( sampleHistory ) );
 }
 
 void Channel::UpdateVol(const Track &trk)
@@ -122,6 +129,7 @@ void Channel::Kill()
 	this->reg.ClearControlRegister();
 	this->vol = 0;
 	this->noteLength = -1;
+	clearHistory();
 }
 
 static inline int getModFlag(int type)
@@ -585,38 +593,17 @@ int32_t Channel::Interpolate()
 	double ratio = this->reg.samplePosition;
 	ratio -= static_cast<int32_t>(ratio);
 
-	uint32_t loc = static_cast<uint32_t>(this->reg.samplePosition);
-	const auto &data = &this->reg.source->dataptr[loc];
-	int32_t a = data[0], b;
-	if (loc + 1 < this->reg.totalLength)
-		b = data[1];
-	else
-		b = a;
+	const auto &data = &this->sampleHistory[this->sampleHistoryPtr + 2];
+	int32_t a = data[0], b = data[1];
 
 	double c0, c1, c2, c3, c4, c5;
 	if (this->ply->interpolation > INTERPOLATION_COSINE)
 	{
-		int32_t c, z;
-		if (loc + 2 < this->reg.totalLength)
-			c = data[2];
-		else
-			c = b;
-		if (loc)
-			z = data[-1];
-		else
-			z = a;
+		int32_t c = data[2], z = data[-1];
 
 		if (this->ply->interpolation > INTERPOLATION_4POINTBSPLINE)
 		{
-			int32_t d, y;
-			if (loc + 3 < this->reg.totalLength)
-				d = data[3];
-			else
-				d = c;
-			if (loc > 1)
-				y = data[-2];
-			else
-				y = z;
+			int32_t d = data[3], y = data[-2];
 
 			if (this->ply->interpolation == INTERPOLATION_6POINTBSPLINE)
 			{
@@ -712,7 +699,28 @@ int32_t Channel::GenerateSample()
 
 void Channel::IncrementSample()
 {
-	this->reg.samplePosition += this->reg.sampleIncrease;
+	double samplePosition = this->reg.samplePosition + this->reg.sampleIncrease;
+
+	if ( this->reg.samplePosition >= 0 )
+	{
+		uint32_t loc = static_cast<uint32_t>(this->reg.samplePosition);
+		uint32_t newloc = static_cast<uint32_t>(samplePosition);
+
+		while ( loc < newloc )
+		{
+			const auto &data = &this->reg.source->dataptr[loc++];
+
+			uint32_t sampleHistoryPtr = this->sampleHistoryPtr;
+
+			sampleHistory[ sampleHistoryPtr ] = data[0];
+			sampleHistory[ sampleHistoryPtr + 8 ] = data[0];
+
+			this->sampleHistoryPtr = ( sampleHistoryPtr + 1 ) & 7;
+		}
+	}
+
+	this->reg.samplePosition = samplePosition;
+
 	if (this->reg.format != 3 && this->reg.samplePosition >= this->reg.totalLength)
 	{
 		if (this->reg.repeatMode == 1)
