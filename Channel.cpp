@@ -593,7 +593,7 @@ int32_t Channel::Interpolate()
 	double ratio = this->reg.samplePosition;
 	ratio -= static_cast<int32_t>(ratio);
 
-	const auto &data = &this->sampleHistory[this->sampleHistoryPtr + 2];
+	const auto &data = &this->sampleHistory[this->sampleHistoryPtr + 5];
 	int32_t a = data[0], b = data[1];
 
 	double c0, c1, c2, c3, c4, c5;
@@ -706,7 +706,10 @@ void Channel::IncrementSample()
 		uint32_t loc = static_cast<uint32_t>(this->reg.samplePosition);
 		uint32_t newloc = static_cast<uint32_t>(samplePosition);
 
-		while ( loc < newloc )
+		if ( newloc >= this->reg.totalLength )
+			newloc -= this->reg.length;
+
+		while ( loc != newloc )
 		{
 			const auto &data = &this->reg.source->dataptr[loc++];
 
@@ -716,6 +719,9 @@ void Channel::IncrementSample()
 			sampleHistory[ sampleHistoryPtr + 8 ] = data[0];
 
 			this->sampleHistoryPtr = ( sampleHistoryPtr + 1 ) & 7;
+
+			if ( loc >= this->reg.totalLength )
+				loc -= this->reg.length;
 		}
 	}
 
