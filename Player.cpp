@@ -124,6 +124,7 @@ int Player::ChannelAlloc(int type, int priority)
 	this->channels[curChnNo].ply = this;
 	this->channels[curChnNo].noteLength = -1;
 	this->channels[curChnNo].vol = 0;
+	this->channels[curChnNo].clearHistory();
 	return curChnNo;
 }
 
