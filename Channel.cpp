@@ -43,10 +43,13 @@ TempSndReg::TempSndReg() : CR(0), SOURCE(nullptr), TIMER(0), REPEAT_POINT(0), LE
 {
 }
 
+static void init_sinc();
+
 Channel::Channel() : chnId(-1), tempReg(), state(CS_NONE), trackId(-1), prio(0), manualSweep(false), flags(), pan(0), extAmpl(0), velocity(0), extPan(0),
 	key(0), ampl(0), extTune(0), orgKey(0), modType(0), modSpeed(0), modDepth(0), modRange(0), modDelay(0), modDelayCnt(0), modCounter(0),
 	sweepLen(0), sweepCnt(0), sweepPitch(0), attackLvl(0), sustainLvl(0x7F), decayRate(0), releaseRate(0xFFFF), noteLength(-1), vol(0), ply(nullptr), reg()
 {
+	init_sinc();
 	clearHistory();
 }
 
@@ -585,6 +588,93 @@ static const int16_t wavedutytbl[8][8] =
 static const double M_PI = 3.14159265358979323846;
 #endif
 
+enum { fir_width = 16 };
+
+enum { fir_max_res = 1024 };
+enum { fir_min_width = (fir_width < 4 ? 4 : fir_width) };
+enum { fir_adj_width = fir_min_width / 4 * 4 + 2 };
+enum { fir_stereo = 1 }; /* channel count, not boolean value */
+enum { fir_write_offset = fir_adj_width * fir_stereo };
+
+enum { fir_buffer_size = fir_width * 2 };
+
+typedef int16_t fir_impulse[fir_adj_width];
+
+/* exp slope to 31/32 of ln(8) */
+static const double fir_ratios[32] = {
+	1.000, 1.067, 1.139, 1.215, 1.297, 1.384, 1.477, 1.576,
+	1.682, 1.795, 1.915, 2.044, 2.181, 2.327, 2.484, 2.650,
+	2.828, 3.018, 3.221, 3.437, 3.668, 3.914, 4.177, 4.458,
+	4.757, 5.076, 5.417, 5.781, 6.169, 6.583, 7.025, 7.497
+};
+
+static fir_impulse fir_impulses[32][fir_max_res];
+
+static void gen_sinc( double rolloff, int width, double offset, double spacing, double scale,
+		int count, int16_t* out )
+{
+	double const maxh = 256;
+	double const step = M_PI / maxh * spacing;
+	double const to_w = maxh * 2 / width;
+	double const pow_a_n = pow( rolloff, maxh );
+	
+	double angle = (count / 2 - 1 + offset) * -step;
+
+	scale /= maxh * 2;
+
+	while ( count-- )
+	{
+		double w;
+		*out++ = 0;
+		w = angle * to_w;
+		if ( fabs( w ) < M_PI )
+		{
+			double rolloff_cos_a = rolloff * cos( angle );
+			double num = 1 - rolloff_cos_a -
+					pow_a_n * cos( maxh * angle ) +
+					pow_a_n * rolloff * cos( (maxh - 1) * angle );
+			double den = 1 - rolloff_cos_a - rolloff_cos_a + rolloff * rolloff;
+			double sinc = scale * num / den - scale;
+			
+			out [-1] = (short) (cos( w ) * sinc + sinc);
+		}
+		angle += step;
+	}
+}
+
+static void init_sinc()
+{
+	static bool initialized = false;
+	if ( initialized ) return;
+
+	double const rolloff = 0.999;
+    double const gain = 1.0;
+
+    int const res = fir_max_res;
+
+	for (unsigned i = 0; i < 32; i++)
+	{
+		double const ratio_ = fir_ratios[i];
+	
+		double const fraction = 1.0 / (double)fir_max_res;
+
+		double const filter = (ratio_ < 1.0) ? 1.0 : 1.0 / ratio_;
+		double pos = 0.0;
+		short* out = (short*) fir_impulses[i];
+		int n;
+		for (n = res; --n >= 0;)
+		{
+			gen_sinc( rolloff, (int) (fir_adj_width * filter + 1) & ~1, pos, filter,
+                (double) (0x7FFF * gain * filter), (int) fir_adj_width, out );
+			out += fir_adj_width;
+
+			pos += fraction;
+		}
+	}
+
+	initialized = true;
+}
+
 // Linear and Cosine interpolation code originally from DeSmuME
 // B-spline and Osculating come from Olli Niemitalo:
 // http://www.student.oulu.fi/~oniemita/dsp/deip.pdf
@@ -593,7 +683,7 @@ int32_t Channel::Interpolate()
 	double ratio = this->reg.samplePosition;
 	ratio -= static_cast<int32_t>(ratio);
 
-	const auto &data = &this->sampleHistory[this->sampleHistoryPtr + 5];
+	const auto &data = &this->sampleHistory[this->sampleHistoryPtr + 16];
 	int32_t a = data[0], b = data[1];
 
 	double c0, c1, c2, c3, c4, c5;
@@ -605,32 +695,54 @@ int32_t Channel::Interpolate()
 		{
 			int32_t d = data[3], y = data[-2];
 
-			if (this->ply->interpolation == INTERPOLATION_6POINTBSPLINE)
+			if (this->ply->interpolation > INTERPOLATION_6POINTBSPLINE)
 			{
-				double ym2py2 = y + c, ym1py1 = z + b;
-				double y2mym2 = c - y, y1mym1 = b - z;
-				double sixthym1py1 = 1 / 6.0 * ym1py1;
-				c0 = 1 / 120.0 * ym2py2 + 13 / 60.0 * ym1py1 + 0.55 * a;
-				c1 = 1 / 24.0 * y2mym2 + 5 / 12.0 * y1mym1;
-				c2 = 1 / 12.0 * ym2py2 + sixthym1py1 - 0.5 * a;
-				c3 = 1 / 12.0 * y2mym2 - 1 / 6.0 * y1mym1;
-				c4 = 1 / 24.0 * ym2py2 - sixthym1py1 + 0.25 * a;
-				c5 = 1 / 120.0 * (d - y) + 1 / 24.0 * (z - c) + 1 / 12.0 * (b - a);
-				return static_cast<int32_t>(((((c5 * ratio + c4) * ratio + c3) * ratio + c2) * ratio + c1) * ratio + c0);
+				const double ratio_ = this->reg.sampleIncrease;
+
+				uint32_t ratio_set = 0;
+				while (ratio_set < 31 && ratio_ > fir_ratios[ratio_set]) ratio_set++;
+
+				uint32_t pos_ = (uint32_t) (ratio * fir_max_res);
+
+				int32_t e = data[4], f = data[5], g = data[6], h = data[7], i = data[8],
+					x = data[-3], w = data[-4], v = data[-5], u = data[-6], t = data[-7], s = data[-8], r = data[-9];
+
+				const auto &imp = fir_impulses[ratio_set][pos_];
+
+				return (r * imp[0] + s * imp[1] + t * imp[2] + u * imp[3] + v * imp[4] +
+					w * imp[5] + x * imp[6] + y * imp[7] + z * imp[8] + a * imp[9] +
+					b * imp[10] + c * imp[11] + d * imp[12] + e * imp[13] + f * imp[14] +
+					g * imp[15] + h * imp[16] + i * imp[17]) >> 15;
 			}
 			else
 			{
-				ratio -= 0.5;
-				double even1 = y + d, odd1 = y - d;
-				double even2 = z + c, odd2 = z - c;
-				double even3 = a + b, odd3 = a - b;
-				c0 = 0.01171875 * even1 - 0.09765625 * even2 + 0.5859375 * even3;
-				c1 = 0.2109375 * odd2 - 281 / 192.0 * odd3 - 13 / 384.0 * odd1;
-				c2 = 0.40625 * even2 - 17 / 48.0 * even3 - 5 / 96.0 * even1;
-				c3 = 0.1875 * odd1 - 53 / 48.0 * odd2 + 2.375 * odd3;
-				c4 = 1 / 48.0 * even1 - 0.0625 * even2 + 1 / 24.0 * even3;
-				c5 = 25 / 24.0 * odd2 - 25 / 12.0 * odd3 - 5 / 24.0 * odd1;
-				return static_cast<int32_t>(((((c5 * ratio + c4) * ratio + c3) * ratio + c2) * ratio + c1) * ratio + c0);
+				if (this->ply->interpolation == INTERPOLATION_6POINTBSPLINE)
+				{
+					double ym2py2 = y + c, ym1py1 = z + b;
+					double y2mym2 = c - y, y1mym1 = b - z;
+					double sixthym1py1 = 1 / 6.0 * ym1py1;
+					c0 = 1 / 120.0 * ym2py2 + 13 / 60.0 * ym1py1 + 0.55 * a;
+					c1 = 1 / 24.0 * y2mym2 + 5 / 12.0 * y1mym1;
+					c2 = 1 / 12.0 * ym2py2 + sixthym1py1 - 0.5 * a;
+					c3 = 1 / 12.0 * y2mym2 - 1 / 6.0 * y1mym1;
+					c4 = 1 / 24.0 * ym2py2 - sixthym1py1 + 0.25 * a;
+					c5 = 1 / 120.0 * (d - y) + 1 / 24.0 * (z - c) + 1 / 12.0 * (b - a);
+					return static_cast<int32_t>(((((c5 * ratio + c4) * ratio + c3) * ratio + c2) * ratio + c1) * ratio + c0);
+				}
+				else
+				{
+					ratio -= 0.5;
+					double even1 = y + d, odd1 = y - d;
+					double even2 = z + c, odd2 = z - c;
+					double even3 = a + b, odd3 = a - b;
+					c0 = 0.01171875 * even1 - 0.09765625 * even2 + 0.5859375 * even3;
+					c1 = 0.2109375 * odd2 - 281 / 192.0 * odd3 - 13 / 384.0 * odd1;
+					c2 = 0.40625 * even2 - 17 / 48.0 * even3 - 5 / 96.0 * even1;
+					c3 = 0.1875 * odd1 - 53 / 48.0 * odd2 + 2.375 * odd3;
+					c4 = 1 / 48.0 * even1 - 0.0625 * even2 + 1 / 24.0 * even3;
+					c5 = 25 / 24.0 * odd2 - 25 / 12.0 * odd3 - 5 / 24.0 * odd1;
+					return static_cast<int32_t>(((((c5 * ratio + c4) * ratio + c3) * ratio + c2) * ratio + c1) * ratio + c0);
+				}
 			}
 		}
 		else
@@ -701,26 +813,21 @@ void Channel::IncrementSample()
 {
 	double samplePosition = this->reg.samplePosition + this->reg.sampleIncrease;
 
-	if ( this->reg.format != 3 && this->reg.samplePosition >= 0 )
+	if (this->reg.format != 3 && this->reg.samplePosition >= 0)
 	{
 		uint32_t loc = static_cast<uint32_t>(this->reg.samplePosition);
 		uint32_t newloc = static_cast<uint32_t>(samplePosition);
 
-		if ( newloc >= this->reg.totalLength )
+		if (newloc >= this->reg.totalLength)
 			newloc -= this->reg.length;
 
-		while ( loc != newloc )
+		while (loc != newloc)
 		{
-			const auto &data = &this->reg.source->dataptr[loc++];
+			sampleHistory[this->sampleHistoryPtr] = sampleHistory[this->sampleHistoryPtr + 32] = this->reg.source->dataptr[loc++];
 
-			uint32_t sampleHistoryPtr = this->sampleHistoryPtr;
+			this->sampleHistoryPtr = ( sampleHistoryPtr + 1 ) & 31;
 
-			sampleHistory[ sampleHistoryPtr ] = data[0];
-			sampleHistory[ sampleHistoryPtr + 8 ] = data[0];
-
-			this->sampleHistoryPtr = ( sampleHistoryPtr + 1 ) & 7;
-
-			if ( loc >= this->reg.totalLength )
+			if (loc >= this->reg.totalLength)
 				loc -= this->reg.length;
 		}
 	}

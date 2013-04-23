@@ -133,7 +133,7 @@ struct Channel
 	 * simplify the case of wrapping.
 	 */
 	uint32_t sampleHistoryPtr;
-	int16_t sampleHistory[16];
+	int16_t sampleHistory[64];
 
 	Channel();
 
