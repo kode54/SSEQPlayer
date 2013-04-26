@@ -130,10 +130,24 @@ struct Channel
 	/*
 	 * Interpolation history buffer, which contains the maximum number of
 	 * samples required for any given interpolation mode. Doubled to
-	 * simplify the case of wrapping.
+	 * simplify the case of wrapping. Thanks to kode54 for providing this.
 	 */
 	uint32_t sampleHistoryPtr;
 	int16_t sampleHistory[64];
+
+	/*
+	 * Lookup tables for the cosine and Lanczos Sinc interpolations, to
+	 * avoid the need to call the sin/cos functions all the time.
+	 * These are static as they will not change between channels or runs
+	 * of the program.
+	 */
+	static bool initializedLUTs;
+	static const unsigned COSINE_RESOLUTION = 8192;
+	static const unsigned LANCZOS_RESOLUTION = 8192;
+	static const unsigned LANCZOS_WIDTH = 8;
+	static const unsigned LANCZOS_SAMPLES = LANCZOS_RESOLUTION * LANCZOS_WIDTH;
+	static double cosine_lut[COSINE_RESOLUTION];
+	static double lanczos_lut[LANCZOS_SAMPLES + 1];
 
 	Channel();
 
