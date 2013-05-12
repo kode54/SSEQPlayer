@@ -49,7 +49,7 @@ template<typename T> inline std::wstring wstringify(const T &x)
 
 template<typename T, typename S> inline void convert(const std::basic_string<S> &s, T &x, bool failIfLeftoverChars = true)
 {
-	auto i = std::basic_istringstream<S>(s);
+	std::basic_istringstream<S> i(s);
 	S c;
 	if (!(i >> x) || (failIfLeftoverChars && i.get(c)))
 		throw BadConversion(std::string("convert(") + typeid(S).name() + ")");

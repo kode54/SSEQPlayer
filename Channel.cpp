@@ -13,6 +13,7 @@
 
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <limits>
 #include "Channel.h"
 #include "Player.h"
 #include "common.h"
