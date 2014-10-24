@@ -11,9 +11,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="BigSString.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Channel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -24,9 +21,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="convert.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ConvertUTF.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="FATSection.h">
@@ -65,18 +59,9 @@
     <ClInclude Include="Track.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="UtfConverter.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="UTFEncodeDecode.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Channel.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="ConvertUTF.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="FATSection.cpp">
@@ -113,12 +98,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Track.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="UtfConverter.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="UTFEncodeDecode.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
