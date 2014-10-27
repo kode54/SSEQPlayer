@@ -11,12 +11,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="BigSString.h" />
     <ClInclude Include="Channel.h" />
     <ClInclude Include="common.h" />
     <ClInclude Include="consts.h" />
     <ClInclude Include="convert.h" />
-    <ClInclude Include="ConvertUTF.h" />
     <ClInclude Include="FATSection.h" />
     <ClInclude Include="INFOEntry.h" />
     <ClInclude Include="INFOSection.h" />
@@ -29,12 +27,9 @@
     <ClInclude Include="SWAV.h" />
     <ClInclude Include="SYMBSection.h" />
     <ClInclude Include="Track.h" />
-    <ClInclude Include="UtfConverter.h" />
-    <ClInclude Include="UTFEncodeDecode.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Channel.cpp" />
-    <ClCompile Include="ConvertUTF.cpp" />
     <ClCompile Include="FATSection.cpp" />
     <ClCompile Include="INFOEntry.cpp" />
     <ClCompile Include="INFOSection.cpp" />
@@ -47,8 +42,6 @@
     <ClCompile Include="SWAV.cpp" />
     <ClCompile Include="SYMBSection.cpp" />
     <ClCompile Include="Track.cpp" />
-    <ClCompile Include="UtfConverter.cpp" />
-    <ClCompile Include="UTFEncodeDecode.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{1B825AB0-287E-4F75-9C15-22469D52BE73}</ProjectGuid>
