@@ -145,6 +145,7 @@ struct Channel
 	static const unsigned SINC_WIDTH = 8;
 	static const unsigned SINC_SAMPLES = SINC_RESOLUTION * SINC_WIDTH;
 	static double sinc_lut[SINC_SAMPLES + 1];
+	static double window_lut[SINC_SAMPLES + 1];
 
 	Channel();
 
