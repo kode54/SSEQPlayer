@@ -8,6 +8,7 @@
  */
 
 #include <vector>
+#include <stdexcept>
 #include "INFOSection.h"
 
 template<typename T> INFORecord<T>::INFORecord() : entries()

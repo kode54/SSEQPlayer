@@ -8,6 +8,7 @@
  */
 
 #include <vector>
+#include <stdexcept>
 #include "SYMBSection.h"
 
 SYMBRecord::SYMBRecord() : entries()

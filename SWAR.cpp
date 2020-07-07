@@ -8,6 +8,7 @@
  */
 
 #include <vector>
+#include <stdexcept>
 #include "SWAR.h"
 #include "NDSStdHeader.h"
 
